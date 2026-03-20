@@ -1,9 +1,6 @@
 package com.guild.demo.config;
 
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.DirectExchange;
-import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -12,26 +9,43 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String QUEUE_NAME = "artifact_notifications_queue";
-    public static final String EXCHANGE_NAME = "guild_exchange";
+    public static final String MAIN_QUEUE = "artifact_main_queue";
+    public static final String DLQ_QUEUE = "artifact_dlq"; 
+
+    public static final String EXCHANGE = "guild_exchange";
+    public static final String DLQ_EXCHANGE = "guild_dlq_exchange";
+
     public static final String ROUTING_KEY = "artifact.created";
 
     @Bean
-    public Queue queue() {
-        return new Queue(QUEUE_NAME, true);
+    public Queue dlqQueue() {
+        return QueueBuilder.durable(DLQ_QUEUE).build();
+    }
+    @Bean
+    public DirectExchange dlqExchange() {
+        return new DirectExchange(DLQ_EXCHANGE);
+    }
+    @Bean
+    public Binding dlqBinding() {
+        return BindingBuilder.bind(dlqQueue()).to(dlqExchange()).with(ROUTING_KEY);
     }
 
     @Bean
-    public DirectExchange exchange() {
-        return new DirectExchange(EXCHANGE_NAME);
+    public Queue mainQueue() {
+        return QueueBuilder.durable(MAIN_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLQ_EXCHANGE)
+                .withArgument("x-dead-letter-routing-key", ROUTING_KEY)
+                .build();
     }
-
     @Bean
-    public Binding binding(Queue queue, DirectExchange exchange) {
-        return BindingBuilder.bind(queue).to(exchange).with(ROUTING_KEY);
+    public DirectExchange mainExchange() {
+        return new DirectExchange(EXCHANGE);
+    }
+    @Bean
+    public Binding mainBinding() {
+        return BindingBuilder.bind(mainQueue()).to(mainExchange()).with(ROUTING_KEY);
     }
 
-    // Конвертер, чтобы объекты Artifact автоматически переводились в JSON при отправке в брокер
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
